@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Underground Mine Monitor</title>
+<style>
+  /* MineGuard console — industrial operations theme.
+     Flat colors only. No gradients, no glow, no glass. */
+  :root {
+    --bg: #0b0d10;
+    --panel: #111418;
+    --panel-2: #151a1f;
+    --border: #242b32;
+    --border-strong: #39424c;
+    --text: #d7dce1;
+    --muted: #8a939c;
+    --faint: #5c656e;
+    --green: #46a06b;
+    --amber: #c08c2d;
+    --red: #cf4444;
+    --info: #6f87b8;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 13px;
+    line-height: 1.45;
+  }
+
+  /* ---------- header ---------- */
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 10px 20px 9px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+  }
+  header h1 {
+    font-size: 15px;
+    font-weight: 650;
+    letter-spacing: 0.06em;
+    margin: 0;
+  }
+  header .sub {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 2px;
+    letter-spacing: 0.02em;
+  }
+  .head-right { text-align: right; font-size: 12px; }
+  .sys-status { font-weight: 650; letter-spacing: 0.05em; }
+  .dot { margin-right: 6px; }
+  .dot.ONLINE, .sys-status.ONLINE { color: var(--green); }
+  .dot.CONNECTING, .sys-status.CONNECTING { color: var(--amber); }
+  .dot.OFFLINE, .sys-status.OFFLINE { color: var(--red); }
+  .transport {
+    display: inline-block;
+    margin-left: 10px;
+    padding: 1px 7px;
+    border: 1px solid var(--border-strong);
+    border-radius: 3px;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.05em;
+  }
+  .poll {
+    color: var(--faint);
+    font-size: 11px;
+    margin-top: 2px;
+    font-family: var(--mono);
+  }
+
+  /* ---------- layout ---------- */
+  main {
+    display: grid;
+    grid-template-columns: 5fr 7fr;
+    grid-template-areas:
+      "nodes selected"
+      "netstat events";
+    gap: 12px;
+    padding: 14px 20px 10px 20px;
+    max-width: 1280px;
+    margin: 0 auto;
+  }
+  @media (max-width: 900px) {
+    main {
+      grid-template-columns: 1fr;
+      grid-template-areas: "selected" "nodes" "netstat" "events";
+    }
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 12px 14px;
+    min-width: 0;
+  }
+  .panel-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+  .panel h2 {
+    font-size: 11px;
+    font-weight: 650;
+    letter-spacing: 0.09em;
+    color: var(--muted);
+    margin: 0;
+  }
+  #panel-nodes { grid-area: nodes; }
+  #panel-selected { grid-area: selected; }
+  #panel-netstat { grid-area: netstat; }
+  #panel-events { grid-area: events; }
+
+  /* ---------- node rows ---------- */
+  .node-row {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: none;
+    border-top: 1px solid var(--border);
+    border-left: 2px solid transparent;
+    padding: 7px 8px;
+    cursor: pointer;
+    color: var(--text);
+    font: inherit;
+  }
+  .node-row:first-of-type { border-top: none; }
+  .node-row:hover { background: var(--panel-2); }
+  .node-row.selected {
+    border-left-color: var(--info);
+    background: var(--panel-2);
+  }
+  .node-row .r1 {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  .node-row .nm { font-family: var(--mono); font-size: 13px; font-weight: 600; }
+  .node-row .rssi { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .node-row .r2 {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 1px;
+  }
+  .st-ONLINE { color: var(--green); font-weight: 600; }
+  .st-AVAILABLE { color: var(--info); font-weight: 600; }
+  .st-OFFLINE { color: var(--red); font-weight: 600; }
+  .stale-tag {
+    color: var(--amber);
+    border: 1px solid var(--amber);
+    border-radius: 3px;
+    padding: 0 4px;
+    margin-left: 6px;
+    font-size: 10px;
+    letter-spacing: 0.05em;
+  }
+  .empty { color: var(--faint); font-size: 12px; padding: 6px 2px; }
+
+  /* ---------- buttons ---------- */
+  .btn {
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border-strong);
+    border-radius: 3px;
+    padding: 6px 14px;
+    font-size: 11px;
+    font-weight: 650;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+  }
+  .btn:hover { background: var(--panel-2); border-color: var(--muted); }
+  .btn:disabled { opacity: 0.55; cursor: default; }
+  .btn.danger {
+    background: #7c1d1d;
+    border-color: #7c1d1d;
+    color: #fff;
+    padding: 9px 30px;
+    font-size: 12px;
+  }
+  .btn.danger:hover { background: #932626; border-color: #932626; }
+
+  /* ---------- selected node ---------- */
+  .sel-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 4px;
+  }
+  .sel-head .nm { font-family: var(--mono); font-size: 15px; font-weight: 650; }
+  .spec-section {
+    font-size: 10px;
+    font-weight: 650;
+    letter-spacing: 0.09em;
+    color: var(--faint);
+    margin: 10px 0 2px 0;
+  }
+  table.spec { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  table.spec td { padding: 3px 2px; border-bottom: 1px solid var(--border); }
+  table.spec td.k { color: var(--muted); width: 130px; }
+  table.spec td.v { font-family: var(--mono); text-align: right; }
+  .env-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px; }
+  .metric {
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 8px 10px;
+    background: var(--panel);
+  }
+  .metric .mk { font-size: 10px; letter-spacing: 0.09em; color: var(--muted); font-weight: 650; }
+  .metric .mv { font-family: var(--mono); font-size: 22px; font-weight: 600; margin-top: 2px; }
+  .metric .mc { font-size: 10px; letter-spacing: 0.07em; margin-top: 2px; color: var(--green); font-weight: 650; }
+  .metric .mc.nodata { color: var(--faint); }
+  .metric.stale .mv { color: var(--muted); }
+  .metric.stale .mc { color: var(--amber); }
+
+  /* ---------- events ---------- */
+  .events { list-style: none; margin: 0; padding: 0; max-height: 240px; overflow-y: auto; }
+  .events li {
+    display: flex;
+    gap: 10px;
+    padding: 4px 2px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .events .ts { font-family: var(--mono); color: var(--faint); flex: 0 0 auto; }
+  .events .lv { flex: 0 0 74px; font-weight: 650; letter-spacing: 0.04em; font-size: 11px; color: var(--muted); }
+  .events .ms { color: var(--text); overflow: hidden; text-overflow: ellipsis; }
+  .events li.SOS .lv, .events li.SOS .ms { color: var(--red); font-weight: 650; }
+  .events li.ERROR .lv { color: var(--red); }
+  .events li.WARNING .lv { color: var(--amber); }
+  .events li.CONNECT .lv { color: var(--green); }
+  .events li.SCAN .lv { color: var(--info); }
+
+  /* ---------- footer strip ---------- */
+  .strip {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 0 20px 18px 20px;
+  }
+  .future {
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px 14px;
+    font-size: 11px;
+    color: var(--faint);
+  }
+  .future b { color: var(--muted); letter-spacing: 0.08em; font-size: 10px; }
+  .future table { width: 100%; border-collapse: collapse; margin-top: 4px; }
+  .future td { padding: 1px 2px; }
+  .future td:last-child { text-align: right; font-family: var(--mono); }
+  .foot {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    color: var(--faint);
+    padding: 8px 2px 0 2px;
+  }
+
+  /* ---------- SOS overlay: the single emphatic element.
+       Persistent, stable, no animation. ---------- */
+  #sos-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.8);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+  }
+  #sos-overlay.visible { display: flex; }
+  #sos-box {
+    background: #150a0b;
+    border: 2px solid var(--red);
+    border-radius: 4px;
+    padding: 34px 54px;
+    text-align: center;
+    min-width: 380px;
+    max-width: 92vw;
+  }
+  #sos-box h2 {
+    color: var(--red);
+    font-size: 13px;
+    letter-spacing: 0.28em;
+    margin: 0 0 4px 0;
+    font-weight: 700;
+  }
+  #sos-box .sos-type { font-size: 58px; font-weight: 800; letter-spacing: 0.04em; margin: 6px 0; }
+  #sos-box .sos-node { font-family: var(--mono); font-size: 19px; font-weight: 600; }
+  #sos-box .sos-msg { color: var(--muted); font-size: 13px; margin-top: 8px; }
+  #sos-box .sos-time { font-family: var(--mono); font-size: 13px; margin-top: 3px; }
+  #sos-box .sos-count { color: var(--amber); font-size: 12px; letter-spacing: 0.08em; margin-top: 10px; font-weight: 650; }
+  #sos-box .btn.danger { margin-top: 18px; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>UNDERGROUND MINE MONITOR</h1>
+    <div class="sub">MineGuard &bull; Mobile Gateway</div>
+  </div>
+  <div class="head-right">
+    <div>
+      <span id="conn-dot" class="dot OFFLINE">&#9679;</span><span id="conn-text" class="sys-status OFFLINE">OFFLINE</span><span class="transport">BLE</span>
+    </div>
+    <div class="poll">UPDATED <span id="poll-time">--:--:--</span></div>
+  </div>
+</header>
+
+<main>
+  <section class="panel" id="panel-nodes">
+    <div class="panel-head">
+      <h2>MINE NODES</h2>
+      <button class="btn" id="rescan-btn" onclick="doRescan()">RESCAN</button>
+    </div>
+    <div id="nodes"></div>
+  </section>
+
+  <section class="panel" id="panel-selected">
+    <div class="panel-head">
+      <h2>SELECTED NODE</h2>
+    </div>
+    <div id="selected"></div>
+  </section>
+
+  <section class="panel" id="panel-netstat">
+    <div class="panel-head">
+      <h2>NETWORK STATUS</h2>
+    </div>
+    <div id="netstat"></div>
+  </section>
+
+  <section class="panel" id="panel-events">
+    <div class="panel-head">
+      <h2>RECENT EVENTS</h2>
+    </div>
+    <ul class="events" id="events"></ul>
+  </section>
+</main>
+
+<div class="strip">
+  <div class="future">
+    <b>FUTURE SUBSIDENCE SENSORS</b>
+    <table>
+      <tr><td>Tilt / inclination</td><td>NOT EQUIPPED</td></tr>
+      <tr><td>Vibration</td><td>NOT EQUIPPED</td></tr>
+      <tr><td>Displacement</td><td>NOT EQUIPPED</td></tr>
+      <tr><td>Crack detection</td><td>NOT EQUIPPED</td></tr>
+    </table>
+    <div style="margin-top:4px">FUTURE ANALYTICS (deformation trends, severity scoring) arrives with equipped nodes. No data at present.</div>
+  </div>
+  <div class="foot">
+    <span>MINEGUARD &bull; LOCAL MONITORING PROTOTYPE</span>
+    <span>TRANSPORT BLE &bull; POLL 1S</span>
+  </div>
+</div>
+
+<div id="sos-overlay">
+  <div id="sos-box">
+    <h2>EMERGENCY ALERT</h2>
+    <div class="sos-type" id="sos-type">SOS</div>
+    <div class="sos-node" id="sos-node">NODE_001</div>
+    <div class="sos-msg">Emergency signal received</div>
+    <div class="sos-time">Time: <span id="sos-time"></span></div>
+    <div class="sos-count" id="sos-count"></div>
+    <button class="btn danger" id="ack-btn" onclick="doAcknowledge()">ACKNOWLEDGE</button>
+  </div>
+</div>
+
+<script>
+let currentAlertId = null;
+// Heartbeat older than this is flagged STALE (presentation only;
+// thresholds live nowhere in the backend, so staleness is judged
+// here from the heartbeat age the backend reports).
+const STALE_AFTER_S = 10;
+
+async function refresh() {
+  try {
+    const res = await fetch("/api/state");
+    const s = await res.json();
+    render(s);
+    const now = new Date();
+    document.getElementById("poll-time").textContent =
+      now.toTimeString().slice(0, 8);
+  } catch (e) {
+    setHeader("OFFLINE");
+    document.getElementById("poll-time").textContent = "--:--:--";
+  }
+}
+
+function setHeader(conn) {
+  const dot = document.getElementById("conn-dot");
+  const txt = document.getElementById("conn-text");
+  dot.className = "dot " + conn;
+  txt.className = "sys-status " + conn;
+  txt.textContent = conn;
+}
+
+function render(s) {
+  setHeader(s.scanning ? "CONNECTING" : s.connection);
+  if (s.scanning) {
+    document.getElementById("conn-text").textContent = "SCANNING";
+  }
+
+  // Nodes — compact rows
+  const nodesDiv = document.getElementById("nodes");
+  nodesDiv.innerHTML = "";
+  if (s.nodes.length === 0) {
+    nodesDiv.innerHTML = "<div class='empty'>SEARCHING FOR NODES...</div>";
+  }
+  for (const n of s.nodes) {
+    const b = document.createElement("button");
+    b.className = "node-row" + (n.selected ? " selected" : "");
+    const stClass = n.connected ? "st-ONLINE"
+      : (n.status === "ONLINE" ? "st-ONLINE"
+      : (n.status === "AVAILABLE" ? "st-AVAILABLE" : "st-OFFLINE"));
+    const stLabel = n.connected ? "ONLINE" : n.status;
+    const hb = hbAge(n);
+    b.innerHTML =
+      "<span class='r1'><span class='nm'><span class='" + stClass + "'>&#9679;</span> " + esc(n.name) + "</span>" +
+      "<span class='rssi'>" + n.rssi + " dBm</span></span>" +
+      "<span class='r2'><span class='" + stClass + "'>" + esc(stLabel) + "</span>" +
+      "<span>" + esc(hb) + "</span></span>";
+    b.onclick = () => selectNode(n.name);
+    nodesDiv.appendChild(b);
+  }
+  document.getElementById("rescan-btn").disabled = s.scanning;
+  document.getElementById("rescan-btn").textContent = s.scanning ? "SCANNING..." : "RESCAN";
+
+  // Selected node
+  renderSelected(s.selected);
+
+  // Network status
+  const hbSel = s.selected ? hbAge(s.selected) : "--";
+  document.getElementById("netstat").innerHTML = "<table class='spec'>" +
+    specRow("Network", netState(s)) +
+    specRow("Link", s.connected ? "ACTIVE" : "IDLE") +
+    specRow("Connected node", esc(s.connected_node || "NONE")) +
+    specRow("Nodes discovered", s.nodes_discovered) +
+    specRow("Transport", "BLE") +
+    specRow("Last heartbeat", esc(hbSel)) +
+    specRow("Last action", esc(s.message || "")) +
+    "</table>";
+
+  // Events
+  const ev = document.getElementById("events");
+  ev.innerHTML = "";
+  for (const e of s.events) {
+    const li = document.createElement("li");
+    li.className = e.level;
+    li.innerHTML = "<span class='ts'>" + esc(e.timestamp) + "</span>" +
+      "<span class='lv'>" + esc(String(e.level).toUpperCase()) + "</span>" +
+      "<span class='ms'>" + esc(e.message) + "</span>";
+    ev.appendChild(li);
+  }
+
+  // SOS overlay — persistent while ANY alert is active.
+  // Shows highest-priority alert first; others preserved.
+  const overlay = document.getElementById("sos-overlay");
+  if (s.alerts.length > 0) {
+    const top = s.alerts[0];
+    currentAlertId = top.alert_id;
+    document.getElementById("sos-type").textContent = top.alert_type;
+    document.getElementById("sos-node").textContent = top.node_id;
+    document.getElementById("sos-time").textContent = top.timestamp;
+    document.getElementById("sos-count").textContent =
+      s.alerts.length > 1 ? ("ACTIVE ALERTS: " + s.alerts.length) : "";
+    overlay.classList.add("visible");
+  } else {
+    currentAlertId = null;
+    overlay.classList.remove("visible");
+  }
+}
+
+function hbAge(n) {
+  if (n.heartbeat_age_s === null || n.heartbeat_age_s === undefined) return "NO DATA";
+  if (n.heartbeat_age_s > STALE_AFTER_S) return n.heartbeat_age_s + "s ago STALE";
+  return n.heartbeat_age_s + "s ago";
+}
+
+function isStale(n) {
+  return n.heartbeat_age_s === null || n.heartbeat_age_s === undefined ||
+    n.heartbeat_age_s > STALE_AFTER_S;
+}
+
+function netState(s) {
+  const cls = s.connection === "ONLINE" ? "st-ONLINE"
+    : (s.connection === "CONNECTING" ? "st-AVAILABLE" : "st-OFFLINE");
+  return "<span class='" + cls + "'>&#9679; " + esc(s.connection) + "</span>";
+}
+
+function renderSelected(n) {
+  const sel = document.getElementById("selected");
+  if (!n) {
+    sel.innerHTML = "<div class='empty'>No node selected.</div>";
+    return;
+  }
+  const stale = isStale(n);
+  const temp = hasVal(n.temperature_c) ? n.temperature_c.toFixed(1) + " &deg;C" : "--";
+  const hum = hasVal(n.humidity_percent) ? n.humidity_percent.toFixed(1) + " %" : "--";
+  const hb = hbAge(n);
+  const online = n.connected
+    ? "<span class='st-ONLINE'>&#9679; ONLINE</span>"
+    : "<span class='st-AVAILABLE'>&#9675; AVAILABLE</span>";
+  sel.innerHTML =
+    "<div class='sel-head'><span class='nm'>" + esc(n.name) + "</span><span>" + online + "</span></div>" +
+    "<div class='spec-section'>IDENTITY</div>" +
+    "<table class='spec'>" +
+    specRow("Node ID", esc(n.name)) +
+    specRow("Address", esc(n.address)) +
+    "</table>" +
+    "<div class='spec-section'>LINK</div>" +
+    "<table class='spec'>" +
+    specRow("RSSI", n.rssi + " dBm") +
+    specRow("Heartbeat", esc(hb) + (stale ? "<span class='stale-tag'>STALE</span>" : "")) +
+    specRow("Last sequence", n.last_sequence) +
+    specRow("Packets", n.packets_received) +
+    "</table>" +
+    "<div class='spec-section'>ENVIRONMENT</div>" +
+    "<div class='env-grid'>" +
+    metric("TEMPERATURE", temp, hasVal(n.temperature_c), stale) +
+    metric("HUMIDITY", hum, hasVal(n.humidity_percent), stale) +
+    "</div>";
+}
+
+function metric(label, value, present, stale) {
+  const cap = present ? (stale ? "STALE" : "NORMAL") : "NO DATA";
+  const cls = "metric" + (present && stale ? " stale" : "");
+  const capCls = "mc" + (present && !stale ? "" : " nodata");
+  return "<div class='" + cls + "'><div class='mk'>" + label + "</div>" +
+    "<div class='mv'>" + value + "</div>" +
+    "<div class='" + capCls + "'>" + cap + "</div></div>";
+}
+
+function specRow(k, v) {
+  return "<tr><td class='k'>" + esc(k) + "</td><td class='v'>" + v + "</td></tr>";
+}
+
+function hasVal(v) {
+  return v !== null && v !== undefined;
+}
+
+function row(k, v) {
+  return "<tr><td>" + esc(k) + "</td><td>" + v + "</td></tr>";
+}
+
+function esc(s) {
+  return String(s === null || s === undefined ? "" : s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+async function doRescan() {
+  await fetch("/api/rescan", {method: "POST"});
+  refresh();
+}
+
+async function selectNode(name) {
+  await fetch("/api/select", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({name: name})
+  });
+  refresh();
+}
+
+async function doAcknowledge() {
+  await fetch("/api/acknowledge", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({alert_id: currentAlertId})
+  });
+  refresh();
+}
+
+refresh();
+setInterval(refresh, 1000);
+</script>
+</body>
+</html>

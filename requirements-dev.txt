@@ -1,0 +1,8 @@
+# MineGuard — development dependencies
+#
+# Installs everything needed to run the whole demo and the test suite.
+
+-r mine-monitor/requirements.txt
+-r web-monitor/requirements.txt
+
+pytest>=7.4

@@ -1,0 +1,9 @@
+# Gateway runtime dependencies (mine-monitor)
+#
+# bleak  - BLE transport (scan / connect / GATT notifications)
+# Flask  - localhost HTTP API consumed by the web dashboard and remote TUI
+#
+# The remote TUI client uses only the standard library (urllib).
+
+bleak>=0.22
+Flask>=3.0
